@@ -16,8 +16,8 @@
 
 #define UART_BRCLK  UCSSEL_2
 
-#define UART_BR0    69
-#define UART_BR1    0
-#define UART_MCTL   UCBRS_4
+#define UART_BR0    0xE2
+#define UART_BR1    0x04
+#define UART_MCTL   UCBRS_0
 
 #endif /* CONFIG_H_ */

@@ -9,28 +9,27 @@
 void main(void) {
     WDTCTL = WDTPW | WDTHOLD;	// Stop watchdog timer
 
-    BCSCTL1 = CALBC1_8MHZ;
-    DCOCTL = CALDCO_8MHZ;
+    BCSCTL1 = CALBC1_12MHZ;
+    DCOCTL = CALDCO_12MHZ;
 
     USCI_UART_init();
     USCI_A0_set_RXIE();
 
     __enable_interrupt();
 
-    //while(1);
+    while(1);
 }
 
 void USCI_UART_init() {
-    // Setup USCI as UART @115200
+    // Setup USCI as UART @9600
     UCA0CTL1 = UCSWRST;                 // USCI software reset
 
     UART_PSEL |= (UART_RX + UART_TX);   // Secondary function for P1.1 and P1.2
     UART_PSEL2 |= (UART_RX + UART_TX);  // P1.1 as UCA0RXD, P1.2 as UCA0TXD
 
-    UCA0CTL1 |= UART_BRCLK;             // Use SMCLK as clock source @8M-Hz
-    // Using Low-Frequency Baud Rate Generation
+    UCA0CTL1 |= UART_BRCLK;             // Use SMCLK as clock source @12M-Hz
     // Following typical values from the user guide
-    // For baud rate @115200 from 8M-Hz
+    // For baud rate @9600 from 12M-Hz
     UCA0BR0 = UART_BR0;
     UCA0BR1 = UART_BR1;
     UCA0MCTL = UART_MCTL;
