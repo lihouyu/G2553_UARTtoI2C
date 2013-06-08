@@ -8,7 +8,7 @@
 #ifndef FUNCTIONS_H_
 #define FUNCTIONS_H_
 
-void USCI_UART_LF_init();
+void USCI_UART_init();
 void USCI_A0_set_TXIE();
 void USCI_A0_set_RXIE();
 

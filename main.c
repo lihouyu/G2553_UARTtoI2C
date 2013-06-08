@@ -3,34 +3,24 @@
 #include "config.h"
 #include "functions.h"
 
-unsigned int _rx_data;
-
 /*
  * main.c
  */
 void main(void) {
     WDTCTL = WDTPW | WDTHOLD;	// Stop watchdog timer
-	
-    // We are using external 16M-Hz crystal oscillator
-    BCSCTL1 |= XTS;     // LFXT1 in high frequency mode
-    BCSCTL3 |= XCAP_0;  // Internal capacitor set to 0
 
-    BCSCTL2 |= (SELM_3 + SELS + DIVS_1);    // LFXT1CLK as source for MCLK & SMCLK
-                                            // MCLK = LFXT1CLK = 16M-Hz
-                                            // SMCLK = LFXT1CLK / 2 = 8M-Hz
+    BCSCTL1 = CALBC1_8MHZ;
+    DCOCTL = CALDCO_8MHZ;
 
-    USCI_UART_LF_init();
+    USCI_UART_init();
     USCI_A0_set_RXIE();
-
-    // For test
-    P1DIR |= BIT0;
 
     __enable_interrupt();
 
     //while(1);
 }
 
-void USCI_UART_LF_init() {
+void USCI_UART_init() {
     // Setup USCI as UART @115200
     UCA0CTL1 = UCSWRST;                 // USCI software reset
 
@@ -43,7 +33,7 @@ void USCI_UART_LF_init() {
     // For baud rate @115200 from 8M-Hz
     UCA0BR0 = UART_BR0;
     UCA0BR1 = UART_BR1;
-    UCA0MCTL |= UART_BRS;
+    UCA0MCTL = UART_MCTL;
 
     UCA0CTL1 &= ~UCSWRST;       // Exit reset status
 }
@@ -67,6 +57,6 @@ __interrupt void USCIAB0RX_ISR(void) {
 #pragma vector = USCIAB0TX_VECTOR
 __interrupt void USCIAB0TX_ISR(void) {
     if (IFG2 & UCA0TXIFG) {     // UCA0TXBUF is ready to accept data for sending through UART on USCI_A0
-        UCA0TXBUF = 'A';
+        UCA0TXBUF = 0x41;
     }
 }
