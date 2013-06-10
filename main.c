@@ -1,24 +1,22 @@
-#include <msp430.h> 
+#include <msp430.h>
 
 #include "config.h"
 #include "functions.h"
 
-unsigned char _I2C_dev_addr = 0;    // I2C device address, should be 7bit
-unsigned char _I2C_rw = 0;          // 0: no action, 1: I2C read, 2: I2C write
-unsigned char _I2C_data[64];        // 64 bytes data buffer
-unsigned char _I2C_data_len = 0;    // Data length for I2C transaction
+unsigned char _I2C_data[130];       // 130 bytes data buffer
 unsigned char _UART_data_len = 0;   // Number of data received or transmitted over UART
-unsigned char _UART_header_len = 0; // The UART header length
+unsigned char _UART_next_IE = 0;    // Interrupt to be enabled next
 
 unsigned char _action_bits = 0x00;  // Action bit mask
 
 /**
- * TI_USCI_I2C_master library variables
+ * I2C variables
+ * From TI SLAA382
  */
 signed char byteCtr;
 unsigned char *TI_receive_field;
 unsigned char *TI_transmit_field;
-//**********************************************/
+//========================//
 
 /*
  * main.c
@@ -30,60 +28,68 @@ void main(void) {
     DCOCTL = CALDCO_12MHZ;
 
     // By default, the system is in UART receive mode
-    USCI_UART_init();
-    USCI_A0_set_RXIE();
+    USCI_UART_plain_init();
+    IE2 |= UCA0RXIE;
 
     __enable_interrupt();
 
     while(1) {
         if (_action_bits & BIT0) {  // Start I2C transaction
-            switch (_I2C_rw) {
-            case 1: // I2C read action
-                break;
-            case 2: // I2C write action
-                TI_USCI_I2C_transmitinit(_I2C_dev_addr, I2C_BR);
-                while (TI_USCI_I2C_notready());
-                TI_USCI_I2C_transmit(_UART_data_len - 1, _I2C_data);
-                while (TI_USCI_I2C_notready());
-                break;
-            }
-            _reset_len();
+            IE2 &= ~UCA0RXIE;
             _action_bits &= ~BIT0;
+            _UART_next_IE = UCA0RXIE;   // By default we enable UART receive interrupt next
+            if (_I2C_data[0] > 2) { // Make sure there's any I2C data to transfer
+                if (_I2C_data[1] & BIT0) {  // I2C master receive
+                    _UART_next_IE = UCA0TXIE;
+                    _I2C_data[0] = _I2C_data[2] + 1;
+                    TI_USCI_I2C_receiveinit(_I2C_data[1] >> 1, I2C_BR);
+                    while (TI_USCI_I2C_notready());
+                    TI_USCI_I2C_receive(_I2C_data[0] - 1, _I2C_data + 1);
+                    while (TI_USCI_I2C_notready());
+                } else {                    // I2C master transmit
+                    TI_USCI_I2C_transmitinit(_I2C_data[1] >> 1, I2C_BR);
+                    while (TI_USCI_I2C_notready());
+                    TI_USCI_I2C_transmit(_I2C_data[0] - 2, _I2C_data + 2);
+                    while (TI_USCI_I2C_notready());
+                }
+            }
+            IE2 &= ~(UCB0TXIE + UCB0RXIE);
+            _UART_data_len = 0;
+            USCI_UART_plain_init();
+            IE2 |= _UART_next_IE;
+        }
+        if (_action_bits & BIT1) {  // Stop UART transmit
+            IE2 &= ~UCA0TXIE;
+            _action_bits &= ~BIT1;
+            USCI_UART_plain_init();
+            IE2 |= UCA0RXIE;
         }
     }
 }
 
 /**
- * USCI UART functions
+ * UART functions
  */
-void USCI_UART_init() {
+void USCI_UART_plain_init() {
     UART_PSEL |= (UART_RX + UART_TX);   // Secondary function for P1.1 and P1.2
     UART_PSEL2 |= (UART_RX + UART_TX);  // P1.1 as UCA0RXD, P1.2 as UCA0TXD
 
-    // Setup USCI as UART @9600
+    // Setup USCI as UART
     UCA0CTL1 = UCSWRST;                 // USCI software reset
 
-    UCA0CTL1 |= UART_BRCLK;             // Use SMCLK as clock source @12M-Hz
-    // Following typical values from the user guide
-    // For baud rate @9600 from 12M-Hz
+    UCA0CTL1 |= UART_BRCLK;             // Select UART baud rate clock source
+    // Set baud rate
     UCA0BR0 = UART_BR0;
     UCA0BR1 = UART_BR1;
     UCA0MCTL = UART_MCTL;
 
     UCA0CTL1 &= ~UCSWRST;       // Exit reset status
 }
-
-void USCI_A0_set_TXIE() {
-    IE2 |= UCA0TXIE;
-}
-
-void USCI_A0_set_RXIE() {
-    IE2 |= UCA0RXIE;
-}
-//**********************************************/
+//========================//
 
 /**
- * TI_USCI_I2C_master library functions
+ * I2C functions
+ * From TI SLAA382
  */
 //------------------------------------------------------------------------------
 // void TI_USCI_I2C_receiveinit(unsigned char slave_address,
@@ -212,76 +218,55 @@ unsigned char TI_USCI_I2C_slave_present(unsigned char slave_address){
 unsigned char TI_USCI_I2C_notready(){
   return (UCB0STAT & UCBBUSY);
 }
-//**********************************************/
+//========================//
 
 /**
- * Extra functions
+ * Interrupt service for both UART on USCI_A0 and I2C on USCI_B0
  */
-void _reset_len() {
-    _UART_data_len = 0;
-    _UART_header_len = 0;
-}
-//**********************************************/
-
 #pragma vector = USCIAB0RX_VECTOR
 __interrupt void USCIAB0RX_ISR(void) {
     if (IFG2 & UCA0RXIFG) {     // USCI_A0 RX interrupt
-        switch (_UART_header_len) {
-        case 0: // The 1st byte is I2C device address in 7bit
-            _I2C_dev_addr = UCA0RXBUF;
-            _UART_header_len++;
-            break;
-        case 1: // The 2nd byte is I2C RW action
-            _I2C_rw = UCA0RXBUF;
-            _UART_header_len++;
-            break;
-        case 2: // The 3rd byte is I2C transaction data length
-            _I2C_data_len = UCA0RXBUF;  // The max value is 128
-            _UART_header_len++;
-            break;
-        default: // Receiving data
-            if (_UART_data_len = _I2C_data_len ||
-                    _UART_data_len > 63) {    // If received data number reach data count
-                _action_bits |= BIT0;           // Set start I2C transaction bit
-                break;                          // Stop here
-            }
-            _I2C_data[_UART_data_len] = UCA0RXBUF;
-            _UART_data_len++;
-        }
-    } else {
-        if (UCB0STAT & UCNACKIFG){            // send STOP if slave sends NACK
-          UCB0CTL1 |= UCTXSTP;
-          UCB0STAT &= ~UCNACKIFG;
+        _I2C_data[_UART_data_len] = UCA0RXBUF;
+        _UART_data_len++;
+        if (_UART_data_len == _I2C_data[0] ||
+                _UART_data_len == 130)
+            _action_bits |= BIT0;
+    } else {    // Interrupt service code for I2C on USCI_B0
+        if (UCB0STAT & UCNACKIFG) {            // send STOP if slave sends NACK
+            UCB0CTL1 |= UCTXSTP;
+            UCB0STAT &= ~UCNACKIFG;
         }
     }
 }
 
 #pragma vector = USCIAB0TX_VECTOR
 __interrupt void USCIAB0TX_ISR(void) {
-    if (IFG2 & UCA0TXIFG) {     // USCI_A0 TX interrupt
-    } else {
-        if (IFG2 & UCB0RXIFG){
-          if ( byteCtr == 0 ){
-            UCB0CTL1 |= UCTXSTP;                    // I2C stop condition
-            *TI_receive_field = UCB0RXBUF;
-            TI_receive_field++;
-          }
-          else {
-            *TI_receive_field = UCB0RXBUF;
-            TI_receive_field++;
-            byteCtr--;
-          }
-        }
-        else {
-          if (byteCtr == 0){
-            UCB0CTL1 |= UCTXSTP;                    // I2C stop condition
-            IFG2 &= ~UCB0TXIFG;                     // Clear USCI_B0 TX int flag
-          }
-          else {
-            UCB0TXBUF = *TI_transmit_field;
-            TI_transmit_field++;
-            byteCtr--;
-          }
+    if (IFG2 & UCA0TXIFG) { // USCI_A0 TX interrupt
+        _UART_data_len++;
+        if (_UART_data_len == _I2C_data[0])
+            _action_bits |= BIT1;
+        else
+            UCA0TXBUF = _I2C_data[_UART_data_len];
+    } else {    // Interrupt service code for I2C on USCI_B0
+        if (IFG2 & UCB0RXIFG) {
+            if ( byteCtr == 0 ) {
+                UCB0CTL1 |= UCTXSTP;                    // I2C stop condition
+                *TI_receive_field = UCB0RXBUF;
+                TI_receive_field++;
+            } else {
+                *TI_receive_field = UCB0RXBUF;
+                TI_receive_field++;
+                byteCtr--;
+            }
+        } else {
+            if (byteCtr == 0){
+                UCB0CTL1 |= UCTXSTP;                    // I2C stop condition
+                IFG2 &= ~UCB0TXIFG;                     // Clear USCI_B0 TX int flag
+            } else {
+                UCB0TXBUF = *TI_transmit_field;
+                TI_transmit_field++;
+                byteCtr--;
+            }
         }
     }
 }
