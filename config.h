@@ -1,8 +1,7 @@
-/*
- * config.h
+/**
+ * LaunchPad as a I2C debug tool using the on board USB => UART bridge
  *
- *  Created on: 2013-6-10
- *      Author: li.houyu
+ * HouYu Li <karadog@hotmail.com>
  */
 
 #ifndef CONFIG_H_
@@ -34,7 +33,7 @@
 #define I2C_SDA     BIT7
 #define I2C_SCL     BIT6
 
-#define BR_100KHZ_12MHZ 0x78                                    // Baud Rate divider for 100kHz @12MHz
+#define BR_100KHZ_12MHZ 0x78    // Baud Rate divider for 100kHz @12MHz
 
 #define I2C_BR  BR_100KHZ_12MHZ
 //========================//

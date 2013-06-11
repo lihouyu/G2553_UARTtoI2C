@@ -1,8 +1,7 @@
-/*
- * functions.h
+/**
+ * LaunchPad as a I2C debug tool using the on board USB => UART bridge
  *
- *  Created on: 2013-6-10
- *      Author: li.houyu
+ * HouYu Li <karadog@hotmail.com>
  */
 
 #ifndef FUNCTIONS_H_
